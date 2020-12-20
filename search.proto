@@ -9,12 +9,32 @@ service Search {
 
   message SearchRequest {
     string userId = 1;
-    repeated string fields = 2;
-    string value = 3;
-    int32 from = 4;
-    int32 to = 5;
+    MetaData fields = 2;
   }
 
   message SearchReply {
-    string message = 1;
+    string fileIds = 1;
+    string highlightedContent = 2;
   }
+  
+  message MetaData {
+    string fileName = 1;
+    string userId  = 2;
+    Range createdAt = 3;
+    Range updatedAt = 4;
+    string type = 5;
+    string content = 6;
+    Owner owner = 7;
+    string permissions = 8;
+}
+
+message Owner {
+  string hierarchy = 1;
+  string name = 2;
+  string userId = 3;
+}
+
+message Range {
+  int64 start = 1;
+  int64 end = 2;
+}
