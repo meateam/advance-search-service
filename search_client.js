@@ -15,18 +15,18 @@ var packageDefinition = protoLoader.loadSync(
 
 var search_proto = grpc.loadPackageDefinition(packageDefinition).searchService;
 
-//Example ----->
+// Example ----->
 
 // const fileMetaData = {
 //   fileName: "crow",
 //   userId: 'https://cdn.elastic-elastic-elastic.org/styles/app.css',
 //   createdAt: {
-//     start: "252600",
-//     end: "2524039936732762600"
+//     start: null,
+//     end: 5
 //   },
 //   updatedAt: {
-//     start: "9322000",
-//     end: "7204335048999322000"
+//     start: 2,
+//     end: null
 //   },
 //   type: "xl",
 //   content: "sober",
@@ -51,6 +51,8 @@ function main() {
       return console.log('Error:', err.message);
     }
 
+    const fileIds = response.fileIds.split(","); 
+    response.fileIds=[...new Set(fileIds)];
     console.log('response: ', response);
   });
 }
