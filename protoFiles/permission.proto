@@ -1,0 +1,40 @@
+
+syntax = "proto3";
+
+package permission;
+
+enum Role {
+	NONE = 0;
+	WRITE = 1;
+	READ = 2;
+}
+
+service Permission  {
+
+	// GetUserPermissions returns the files that the user was given permission to.
+	rpc GetUserPermissions(GetUserPermissionsRequest) returns (GetUserPermissionsResponse) {}  
+
+}
+
+message GetUserPermissionsRequest {
+	// The ID of the user to get its permissions.
+	string userID = 1;
+}
+
+message GetUserPermissionsResponse {
+	// The file of the permission and its role.
+	message FileRole {
+		// The file ID.
+		string fileID = 1;
+
+		// The role of the file permission.
+		Role role = 2;
+
+		// The creator of the permission.
+		string creator = 3;
+	}
+
+	// Array of files and their role.
+	repeated FileRole permissions = 1;
+}
+

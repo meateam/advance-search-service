@@ -10,7 +10,8 @@
   "license": "ISC",
   "dependencies": {
     "@elastic/elasticsearch": "^7.10.0",
+    "@grpc/grpc-js": "^1.2.0",
     "@grpc/proto-loader": "^0.5.5",
-    "@grpc/grpc-js": "^1.2.0"
+    "dotenv": "^8.2.0"
   }
 }
