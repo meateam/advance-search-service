@@ -4,7 +4,8 @@
   "description": "",
   "main": "search_server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node search_server.js"
   },
   "author": "",
   "license": "ISC",
@@ -12,6 +13,7 @@
     "@elastic/elasticsearch": "^7.10.0",
     "@grpc/grpc-js": "^1.2.0",
     "@grpc/proto-loader": "^0.5.5",
-    "dotenv": "^8.2.0"
+    "dotenv": "^8.2.0",
+    "winston": "^3.3.3"
   }
 }

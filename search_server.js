@@ -2,11 +2,14 @@ const { Client } = require('@elastic/elasticsearch')
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
 const dotenv = require('dotenv');
+const { Console } = require('winston/lib/winston/transports');
 dotenv.config();
 
 const SEARCH_PROTO_PATH = __dirname + '/protoFiles/search.proto';
 const PERMMISSION_PROTO_PATH = __dirname + '/protoFiles/permission.proto';
 const FILE_PROTO_PATH = __dirname + '/protoFiles/file.proto';
+
+const logger = require("./logger");
 
 const conditions = {
   keepCase: true,
@@ -38,6 +41,7 @@ const permissionClient = new permission_proto.Permission(`${process.env.PERMISSI
 const fileClient = new file_proto.FileService(`${process.env.FILE_SERVICE_URL}`,
   grpc.credentials.createInsecure());
 
+
 function main() {
   var server = new grpc.Server();
   server.addService(search_proto.Search.service, { search: search });
@@ -47,24 +51,33 @@ function main() {
 }
 
 main();
+let userId;
 
 async function search(call, callback) {
   try {
-    let highlight;
+    let indexesArray = [];
     const exactMatch = call.request.exactMatch;
     const fields = call.request.fields;
+    userId = call.request.userID;
 
-    const query = timeOrganizer(fields, exactMatch); //returns an organized Query according to the search conditions.
-    const usersPermissions = await getUsersPermissions(call.request.userID);
-    const ownersArray = await indexesCollector(usersPermissions.permissions);
-    ownersArray.push(call.request.userID);
-    const indexesArray = [...new Set(ownersArray)];  //returns an Array of ownerIDs of files that were shared with me.
+    const query = queryOrganizer(fields, exactMatch); //returns an organized Query according to the search conditions.
+    const usersPermissions = await getUsersPermissions(userId);
+
+    if (usersPermissions.permissions.length) {
+      const ownersArray = await indexesCollector(usersPermissions.permissions);
+      ownersArray.unshift(userId);
+      indexesArray = [...new Set(ownersArray)];  //returns an Array of ownerIDs of files that were shared with the user.
+    }
+
+    const indices_boost = new Object;
+    indices_boost[userId] = 2; //boost the files of the user who did the search to the top of the results.
 
     const result = await clientES.search({
       index: indexesArray,
       body: {
-        "from": 0,
-        "size": process.env.MAX_RESULT,  //max number of results. (default is 10)
+        "indices_boost": [indices_boost],
+        "from": call.request.resultsAmount.from,
+        "size": call.request.resultsAmount.amount,
         "query": {
           "bool": {
             "must": query
@@ -85,38 +98,36 @@ async function search(call, callback) {
     }
     );
 
-
     const results = await result.body.hits.hits.map(document => {
       let highlighted = null;
       if (fields.content) {
         highlighted = document.highlight.content[0];
       };
       const fileResult = {
-        fileIDs: document._source.fileId,
+        fileId: document._source.fileId,
         highlightedContent: highlighted
       };
       return fileResult;
     });
-    console.log(results)
+
+    logger.log({
+      level: "info",
+      message: `Search completed successfully!`,
+      label: `userId: ${userId}`,
+    });
 
     callback(null, { results: results });
   }
   catch (err) {
-    console.log(err)
+    logger.log({
+      level: "error",
+      message: `${err} `,
+      label: `userId: ${userId}`,
+    });
     callback(err, null);
   }
 }
 
-function getUsersPermissions(userId) {
-  return new Promise((resolve, reject) => {
-    permissionClient.GetUserPermissions({ userID: userId }, function (err, response) {
-      if (err) {
-        reject(err);
-      }
-      resolve(response)
-    });
-  });
-}
 async function indexesCollector(permissionArray) {
   let filesArray = [];
   let ownersArray = [];
@@ -127,33 +138,67 @@ async function indexesCollector(permissionArray) {
     filesArray.push(fileObj)
   }));
 
+  if (filesArray.includes(null)) {
+    return [];
+  }
 
   for (let file of filesArray) {
-    if (file.type.includes("folder")) {
+    if (file) {
+      if (file.type.includes("folder")) {
+        let desendantsArray = await getDesendantsById(file.id);
+        if (!desendantsArray) {
+          return [];
+        }
+        let ownersIds = desendantsArray.map((desendants) => {
+          return desendants.file.ownerID;
+        });
 
-      let desendantsArray = await getDesendantsById(file.id); //DRIVE --- GetDescendantsByID
-      let ownersIds = desendantsArray.map((desendants) => {
-        return desendants.file.ownerID;
-      });
-
-      ownersIds.push(file.ownerID)
-      ownersArray = ownersArray.concat(ownersIds);
-    }
-    else if (file.type.includes("document")) {
-      ownersArray.push(file.ownerID);
+        ownersIds.push(file.ownerID)
+        ownersArray = ownersArray.concat(ownersIds);
+      }
+      else if (file.type.includes("document")) {
+        ownersArray.push(file.ownerID);
+      }
     }
   }
 
+  logger.log({
+    level: "info",
+    message: `indexes collected successfully`,
+    label: `userId: ${userId}`,
+  });
+
   return ownersArray;
+}
+
+function getUsersPermissions(userId) {
+  return new Promise((resolve, reject) => {
+    permissionClient.GetUserPermissions({ userID: userId }, function (err, response) {
+      if (err) {
+        logger.log({
+          level: "error",
+          message: `in GetUserPermissions request to Drive - ${err.details}`,
+          label: `userId: ${userId}`,
+        });
+        resolve(null);
+      }
+      resolve(response);
+    });
+  });
 }
 
 function getFileByID(fileId) {
   return new Promise((resolve, reject) => {
     fileClient.GetFileByID({ id: fileId }, function (err, response) {
       if (err) {
-        reject(err);
+        logger.log({
+          level: "error",
+          message: `in GetFileByID request to Drive - ${err.details}`,
+          label: `userId: ${userId}`,
+        });
+        resolve(null);
       }
-      resolve(response)
+      resolve(response);
     });
   });
 }
@@ -162,14 +207,19 @@ function getDesendantsById(folderId) {
   return new Promise((resolve, reject) => {
     fileClient.GetDescendantsByID({ id: folderId }, function (err, response) {
       if (err) {
-        reject(err);
+        logger.log({
+          level: "error",
+          message: `in GetDescendantsByID request to Drive - ${err.details}`,
+          label: `userId: ${userId}`,
+        });
+        resolve(null);
       }
-      resolve(response.descendants)
+      resolve(response.descendants);
     });
   });
 }
 
-function timeOrganizer(fields, exactMatch) {
+function queryOrganizer(fields, exactMatch) {
   let searchType;
 
   if (exactMatch) {   //type of content search
@@ -226,7 +276,7 @@ function timeOrganizer(fields, exactMatch) {
             {
               "query_string": {
                 "default_field": "permissions.user.userId",
-                "query": `*${fields.userId}*`
+                "query": userId
               }
             }
             ]
@@ -301,7 +351,7 @@ function pushToQuery(field, query, rangeQuery) {
       field.start = oldest;
       rangeQuery.range[fieldName].gte = field.start
     }
-
+    
     query.push(rangeQuery);
   }
 }

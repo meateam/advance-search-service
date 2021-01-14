@@ -3,7 +3,6 @@ syntax = "proto3";
 package searchService;
 
 service Search {
-
     rpc search (SearchRequest) returns (SearchReply) {}
 }
 
@@ -16,23 +15,15 @@ message SearchRequest {
 
   //The fields which contains what the user wants to search
   required MetaData fields = 3;
-}
-
-message SearchReply {
-
-  message fileResult{
-
-    //fileIDs- Array of Ids of the files that matched the search.
-    string fileIDs = 1;
-
-    //highlightedContent- Array of the Content that matched the content search(with highlighted words).
-    string highlightedContent = 2;
-  }
   
- repeated fileResult results=1;
+  //resultsAmount- the amount of results to be returned
+  required Amount resultsAmount = 4;
 }
 
-
+message Amount {
+  int32 from = 1;  
+  int32 amount = 2;
+}
   
 message MetaData {
   string fileName = 1;
@@ -43,6 +34,20 @@ message MetaData {
   string content = 6;
   Owner owner = 7;
   string permissions = 8;
+}
+
+message SearchReply {
+
+  message fileResult{
+
+    //fileIDs- Array of Ids of the files that matched the search.
+    string fileId = 1;
+
+    //highlightedContent- Array of the Content that matched the content search(with highlighted words).
+    string highlightedContent = 2;
+  }
+  
+ repeated fileResult results=1;
 }
 
 message Owner {
